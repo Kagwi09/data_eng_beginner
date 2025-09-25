@@ -1,49 +1,40 @@
-import os
 import requests
-import pandas as pd
+import os
 from dotenv import load_dotenv
+import pandas as pd
+import time
 
 load_dotenv()
-
-polygon_api_key = os.getenv("POLYGON_API_KEY")
-
+POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
 LIMIT = 1000
-base_url = (
-    f"https://api.polygon.io/v3/reference/tickers?"
-    f"market=stocks&active=true&order=asc&limit={LIMIT}&sort=ticker&apiKey={polygon_api_key}"
-)
 
-
-def fetch_all_tickers(api_url: str, api_key: str) -> list[dict]:
-    """Fetch all tickers from Polygon API with pagination."""
-    tickers = []
-    response = requests.get(api_url)
+def run_stock_job():
+    url = f'https://api.polygon.io/v3/reference/tickers?market=stocks&active=true&order=asc&limit={LIMIT}&sort=ticker&apiKey={POLYGON_API_KEY}'
+    response = requests.get(url)
+    response.raise_for_status()  # stop if API fails
     data = response.json()
-    tickers.extend(data.get('results', []))
+    
+    tickers = list(data.get('results', []))
 
     while 'next_url' in data:
-        next_url = data['next_url'] + f'&apiKey={api_key}'
-        response = requests.get(next_url)
+        print('Requesting next page:', data['next_url'])
+        response = requests.get(data['next_url'] + f'&apiKey={POLYGON_API_KEY}')
+        response.raise_for_status()
         data = response.json()
         tickers.extend(data.get('results', []))
+        print(f'Fetched {len(tickers)} tickers so far...')
 
-    return tickers
+        # Wait 12–15 seconds to avoid hitting free tier rate limit
+        time.sleep(15)
 
 
-def save_tickers_to_csv(tickers: list[dict], filename: str):
-    """Save tickers list of dicts to a CSV file."""
-    if not tickers:
-        print("No tickers to save.")
-        return
-
+    # Convert to pandas DataFrame
     df = pd.DataFrame(tickers)
-    df.to_csv(filename, index=False)
-    print(f"✅ Saved {len(tickers)} tickers to {filename}")
-
-
-if __name__ == "__main__":
-    all_tickers = fetch_all_tickers(base_url, polygon_api_key)
-    print(f"Fetched {len(all_tickers)} tickers")
 
     # Save to CSV
-    save_tickers_to_csv(all_tickers, "tickers.csv")
+    output_csv = 'tickers.csv'
+    df.to_csv(output_csv, index=False, encoding='utf-8')
+    print(f'Wrote {len(df)} rows to {output_csv} using pandas')
+
+if __name__ == '__main__':
+    run_stock_job()
